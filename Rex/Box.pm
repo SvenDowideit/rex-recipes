@@ -33,33 +33,6 @@ use Data::Dumper;
 #TODO: extract this so it only gets used if needed, and installed.
 use Net::VNC;
 
-#forward declare groups - these will get re-defined
-#group 'vm', 'fake';
-#group 'hoster', 'fake';
-
-=pod
-
-=head2 new
-
-  my $object = Rex::Box->new(
-      foo => 'bar',
-  );
-
-The C<new> constructor lets you create a new B<Rex::Box> object.
-
-So no big surprises there...
-
-Returns a new B<Rex::Box> or dies on error.
-
-=cut
-
-sub new {
-	my $class = shift;
-	my $self  = bless { @_ }, $class;
-	return $self;
-}
-
-
 =pod
 
 =head2 Box:exists
@@ -103,11 +76,10 @@ task "create", group => "hoster", sub {
     die 'need to define a --name= param' unless $params->{name};
     die "--name=$params->{name} ambiguous, please use another name" if ($params->{name} eq '1');
     
-    Rex::Logger::info('running ox:create on '.run 'uname -a');
+    Rex::Logger::info('running Box:create on '.run 'uname -a');
     
     my $server = Rex::get_current_connection()->{server};
-    my $cfg = Rex::Box::Config->get();
-    my $base_box = $cfg->{Base}->{TemplateImages}->{$cfg->{Base}->{DefaultBox}};
+    my $base_box = Rex::Box::Config->get(qw(Base TemplateImages), Rex::Box::Config->get(qw(Base DefaultBox)));
     
     
     #TODO: refuse to name a vm with chars you can't use in a hostname
@@ -124,8 +96,8 @@ task "create", group => "hoster", sub {
          },],
          storage     => [
              {
-                file   => $cfg->{hosts}->{$server}->{ImageDir}.$params->{name}.".img",
-                template   => $cfg->{hosts}->{$server}->{TemplateImageDir}.$base_box->{ImageFile},
+                file   => Rex::Box::Config->get('hosts', $server, 'ImageDir').$params->{name}.".img",
+                template   => Rex::Box::Config->get('hosts', $server, 'TemplateImageDir').$base_box->{ImageFile},
              },
           ],
           graphics => { type=>'vnc',
@@ -290,8 +262,7 @@ task "delete", group => "hoster", "name", sub {
     print "Deleting vm named: $params->{name}from $server \n";
 	vm delete => $params->{name};
     print "Deleting image named: vm_imagesdir.$params->{name}.img \n";
-    my $cfg = Rex::Box::Config->get();
-    rm $cfg->{hosts}->{$server}->{ImageDir}.$params->{name}.".img";
+    rm Rex::Box::Config->get('hosts', $server, 'ImageDir').$params->{name}.".img";
 	
 };
 
@@ -387,10 +358,6 @@ sub __vm_getip {
 use Rex::Commands::Sysctl;
 use Rex::Commands::Upload;
 
-#While I can dynamically change the definition of the group, or set the hostname, I can't set how to auth to it.
-#tbh, auth shouldn't really be a global, its host dependent
-user('root');
-password('rex');
 desc "set_hostname --name=";
 task "set_hostname", sub {    
     my ($params) = @_;

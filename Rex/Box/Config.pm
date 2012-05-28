@@ -85,7 +85,7 @@ sub get {
 
 		my $ref = $cfg;
 		foreach (@path) {
-			return unless (defined($ref));
+			last if (!defined($ref));
 			$ref = $ref->{$_};
 		}
 		return $ref;
@@ -98,7 +98,7 @@ sub get {
 
 =head1 SUPPORT
 
-Email me
+Email Sven Dowideit <SvenDowideit@fosiki.com>.
 
 =head1 AUTHOR
 

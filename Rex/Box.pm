@@ -26,28 +26,16 @@ use Rex::Logger;
 use Rex::Output;
 use Rex::Commands::Virtualization;
 use Rex::Commands::Fs;
+use Rex::Box::Config;
 
 use Data::Dumper;
 
 #TODO: extract this so it only gets used if needed, and installed.
 use Net::VNC;
 
-group 'vm', 'fake';
-
-#TODO: move the cfg code out into a 'task module cfg / persistence module'
-#tasks need to register what options they need so that we cna test and die before we start running them
-use YAML qw(LoadFile);
-my $cfg = YAML::LoadFile('/home/sven/.rex/config.yml');# if (-f '~/.rex/config.yml');
-
-#print "\n===========\n".Dumper(keys (%{$cfg->{groups}}))."\n===========\n";
-
-map {
-		#print STDERR $_;
-		group $_, $cfg->{groups}->{$_}->{hosts} 
-	} keys (%{$cfg->{groups}});
-
-set virtualization => $cfg->{virtualization};
-
+#forward declare groups - these will get re-defined
+#group 'vm', 'fake';
+#group 'hoster', 'fake';
 
 =pod
 
@@ -115,7 +103,10 @@ task "create", group => "hoster", sub {
     die 'need to define a --name= param' unless $params->{name};
     die "--name=$params->{name} ambiguous, please use another name" if ($params->{name} eq '1');
     
+    Rex::Logger::info('running ox:create on '.run 'uname -a');
+    
     my $server = Rex::get_current_connection()->{server};
+    my $cfg = Rex::Box::Config->get();
     my $base_box = $cfg->{Base}->{TemplateImages}->{$cfg->{Base}->{DefaultBox}};
     
     
@@ -186,6 +177,7 @@ task "create", group => "hoster", sub {
         $vmtask->set_password($base_box->{password});
         pass_auth(); #TODO: it bothers me that pass_auth works different from user() and password()
 		# if ($base_box->{auth} eq 'pass_auth');
+		$vmtask->set_server($$ips[0]);
 		
 		$vmtask->run($$ips[0], params => $params);
 	}
@@ -298,6 +290,7 @@ task "delete", group => "hoster", "name", sub {
     print "Deleting vm named: $params->{name}from $server \n";
 	vm delete => $params->{name};
     print "Deleting image named: vm_imagesdir.$params->{name}.img \n";
+    my $cfg = Rex::Box::Config->get();
     rm $cfg->{hosts}->{$server}->{ImageDir}.$params->{name}.".img";
 	
 };
@@ -399,11 +392,13 @@ use Rex::Commands::Upload;
 user('root');
 password('rex');
 desc "set_hostname --name=";
-task "set_hostname", group=> 'vm', sub {    
+task "set_hostname", sub {    
     my ($params) = @_;
     
     my $server = Rex::get_current_connection()->{server};
     Rex::Logger::info("running set_hostname on $server, setting name to $params->{name}");
+    
+    Rex::Logger::info('running set_hostname on '.run 'uname -a');
     
     #given that the list of params is built by rex, can it error out?
     die 'need to define a --name= param' unless $params->{name};

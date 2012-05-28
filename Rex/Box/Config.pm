@@ -57,7 +57,7 @@ sub import {
 
 		map {
 		#print STDERR $_;
-		group $_, $cfg->{groups}->{$_}->{hosts} 
+				group $_, $cfg->{groups}->{$_}->{hosts} 
 		} keys (%{$cfg->{groups}});
 
 		set virtualization => $cfg->{virtualization};
@@ -79,7 +79,7 @@ returns undef if the path is not found.
 
 =cut
 
-sub get {
+sub getCfg {
 		my $class = shift;
 		my @path = @_;
 

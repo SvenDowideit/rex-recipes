@@ -7,7 +7,6 @@
 
 package Rex::Box;
 
-use Rex -base;
 
 use 5.010;
 use strict;
@@ -16,7 +15,7 @@ use warnings;
 our $VERSION = '0.01';
 
 
-use Rex;
+use Rex -base;
 use Rex::Config;
 use Rex::Group;
 use Rex::Batch;
@@ -32,6 +31,64 @@ use Data::Dumper;
 
 #TODO: extract this so it only gets used if needed, and installed.
 use Net::VNC;
+
+=pod
+
+=head2 Rex::Box->configurewith(task)
+
+configure the new host with the specified task
+
+=cut
+
+sub configurewith {
+	my $self = shift;
+	my $taskname = shift;
+	
+	Rex::TaskList->modify ('before', $taskname, \&runbefore, 'main', 'Rex/Box.pm', 666);
+}
+
+sub runbefore {
+      my ($server, $server_ref, $params) = @_;
+      
+       #TODO: this presumes that <local> can talk directly to the vm - which might also not be true.
+       if (!exists $params->{name} ||
+            !defined $params->{name} ||
+            $params->{name} eq '1') {
+            	if ($params->{name} && $params->{name} eq '1') {
+                  Rex::Logger::info "--name=$params->{name} ambiguous, please use another name";
+            	} else {
+                  Rex::Logger::info 'need to define a --name= param' ;
+            	}
+            my ($package, $file, $line) = caller;
+        	print STDERR "called by $package, $file, $line\n";
+          exit;
+       }
+       
+       Rex::Logger::info('running before create on '.run 'uname -a');
+       
+       group 'vm', $params->{name};
+       
+       my $cfg = Rex::Box::Config->getCfg();
+
+       #make sure the vm exists, or create it
+       #Rex::TaskList->get_task("Box:exists")->run($cfg->{virtualization_host}, params => $params);
+       do_task 'Box:exists';
+    	
+       my $vmtask = Rex::TaskList->get_task("create");
+       my $base_box = Rex::Box::Config->getCfg(qw(Base TemplateImages), Rex::Box::Config->getCfg(qw(Base DefaultBox)));    
+       $vmtask->set_user($base_box->{user});
+       $vmtask->set_password($base_box->{password});
+       
+       ##CAN"T CALL THIS IN BEFORE()    $vmtask->set_server($params->{name});
+       
+       $$server_ref = $params->{name};
+       
+       pass_auth(); #TODO: it bothers me that pass_auth works different from user() and password()
+       #TODO: looks like specifying the host here isn't working
+       #$vmtask->run($params->{name}, params => $params);
+       #do_task 'create';
+}
+
 
 =pod
 
@@ -52,14 +109,6 @@ task "exists", sub {
 
 };
 
-
-before 'Box:exists' => sub {
-	print "### A:exists ###\n";
-};
-#before 'exists' => sub {
-#	print "### exists ###\n";
-#};
-
 =pod
 
 =head2 Box:create
@@ -79,7 +128,7 @@ task "create", group => "hoster", sub {
     Rex::Logger::info('running Box:create on '.run 'uname -a');
     
     my $server = Rex::get_current_connection()->{server};
-    my $base_box = Rex::Box::Config->get(qw(Base TemplateImages), Rex::Box::Config->get(qw(Base DefaultBox)));
+    my $base_box = Rex::Box::Config->getCfg(qw(Base TemplateImages), Rex::Box::Config->getCfg(qw(Base DefaultBox)));
     
     
     #TODO: refuse to name a vm with chars you can't use in a hostname
@@ -96,8 +145,8 @@ task "create", group => "hoster", sub {
          },],
          storage     => [
              {
-                file   => Rex::Box::Config->get('hosts', $server, 'ImageDir').$params->{name}.".img",
-                template   => Rex::Box::Config->get('hosts', $server, 'TemplateImageDir').$base_box->{ImageFile},
+                file   => Rex::Box::Config->getCfg('hosts', $server, 'ImageDir').$params->{name}.".img",
+                template   => Rex::Box::Config->getCfg('hosts', $server, 'TemplateImageDir').$base_box->{ImageFile},
              },
           ],
           graphics => { type=>'vnc',
@@ -154,13 +203,6 @@ task "create", group => "hoster", sub {
 		$vmtask->run($$ips[0], params => $params);
 	}
 };
-
-around create => sub {
-    my ($server, $server_ref, $params) = @_;
-	##TODO: this bothers me, I think the commandline param should be available here too
-	print "### test on $server $params->{name}###\n";
-};
-
 
 =pod
 
@@ -262,7 +304,7 @@ task "delete", group => "hoster", "name", sub {
     print "Deleting vm named: $params->{name}from $server \n";
 	vm delete => $params->{name};
     print "Deleting image named: vm_imagesdir.$params->{name}.img \n";
-    rm Rex::Box::Config->get('hosts', $server, 'ImageDir').$params->{name}.".img";
+    rm Rex::Box::Config->getCfg('hosts', $server, 'ImageDir').$params->{name}.".img";
 	
 };
 

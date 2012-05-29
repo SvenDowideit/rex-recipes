@@ -28,8 +28,8 @@ our $VERSION = '0.01';
 use Rex -base;
 use Rex::Commands::Virtualization;
 use Rex::Config;
-use Data::Dumper;
-
+use File::Path qw(make_path);
+use YAML qw(LoadFile DumpFile);
 
 =pod
 
@@ -44,19 +44,19 @@ defines groups, sets the virtualisation type, and tells Rex::Box about known vm 
 =cut
 
 our $cfg;
-use constant cfgFile => '~/.rex/config.yml';
+use constant cfgDir => '~/.rex';
+use constant cfgFile => 'config.yml';
 
 sub import {
 	my $class = shift;
 
-	my $configFile = cfgFile;
+	my $configFile = cfgDir.'/'.cfgFile;
 	$configFile =~ s/~/Rex::Config->_home_dir()/e;
 
     if (!defined($cfg) && -e $configFile) {
 		
 		#TODO: move the cfg code out into a 'task module cfg / persistence module'
 		#tasks need to register what options they need so that we can test and die before we start running them
-		use YAML qw(LoadFile);
 		$cfg = YAML::LoadFile($configFile);
 
 		#print "\n= Loaded ==========\n".Dumper($cfg)."\n===========\n";
@@ -68,8 +68,8 @@ sub import {
 
 		set virtualization => $cfg->{virtualization};
 	} else {
-		Rex::Logger::info("no ".cfgFile." file found, using defaults (localhost)");
-		Rex::Logger::info("  see Box:config task to set basic values of ~/.rex/config.yml");
+		Rex::Logger::info("no ".cfgDir.'/'.cfgFile." file found, using defaults (localhost)");
+		Rex::Logger::info("  see Box:config task to set basic values of ".cfgDir.'/'.cfgFile);
 		$cfg = {};
 	}
 
@@ -141,9 +141,10 @@ my $templateImageDir = Box::Config->setCfg(qw/hosts myhost TemplateImageDir/, '~
 sub save {
 	my $class = shift;
 	return if (!defined $cfg);
-	my $configFile = cfgFile;
-	$configFile =~ s/~/Rex::Config->_home_dir()/e;
-	YAML::DumpFile($configFile, $cfg);
+	my $configDir = cfgDir;
+	$configDir =~ s/~/Rex::Config->_home_dir()/e;
+	make_path($configDir);
+	YAML::DumpFile($configDir.'/'.cfgFile, $cfg);
 }
 
 1;

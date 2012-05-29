@@ -32,6 +32,16 @@ use Data::Dumper;
 #TODO: extract this so it only gets used if needed, and installed.
 use Net::VNC;
 
+#TODO: its probably better to have the task module or tasks register that they need certain cfg's
+#and to allow them to be set from the cmdline..
+#init groups needed when there's no config.yml
+use Rex::Group;
+unless (Rex::Group->is_group('hoster')) {
+	group 'hoster', '<local>';
+}
+#TODO: hardcoding libvirt - can we try to detect what if anything is installed and use it?
+set virtualization => 'LibVirt';
+
 =pod
 
 =head2 Rex::Box->configurewith(task)

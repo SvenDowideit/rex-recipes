@@ -46,12 +46,15 @@ our $cfg;
 sub import {
 	my $class = shift;
 
-    unless (defined($cfg)) {
+#'~/.rex/config.yml
+	my $configFile = '/home/sven/.rex/config.yml';
+
+    if (!defined($cfg) && -e $configFile) {
 		
 		#TODO: move the cfg code out into a 'task module cfg / persistence module'
 		#tasks need to register what options they need so that we can test and die before we start running them
 		use YAML qw(LoadFile);
-		$cfg = YAML::LoadFile('/home/sven/.rex/config.yml');# if (-f '~/.rex/config.yml');
+		$cfg = YAML::LoadFile($configFile);
 
 		#print "\n= Loaded ==========\n".Dumper($cfg)."\n===========\n";
 
@@ -61,8 +64,9 @@ sub import {
 		} keys (%{$cfg->{groups}});
 
 		set virtualization => $cfg->{virtualization};
+	} else {
+		Rex::Logger::info("no $configFile found, using defaults (localhost)");
 	}
-	# Do something here
 
 	return 1;
 }

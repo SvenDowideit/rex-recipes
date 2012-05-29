@@ -27,6 +27,7 @@ our $VERSION = '0.01';
 
 use Rex -base;
 use Rex::Commands::Virtualization;
+use Rex::Config;
 use Data::Dumper;
 
 
@@ -38,16 +39,18 @@ load the ~/.rex/config.yml if it exists
 
 defines groups, sets the virtualisation type, and tells Rex::Box about known vm image templates
 
+#TODO: consider a server wide cfg at /etc/rex, or in the cpan module cfg area
 
 =cut
 
 our $cfg;
+use constant cfgFile => '~/.rex/config.yml';
 
 sub import {
 	my $class = shift;
 
-#'~/.rex/config.yml
-	my $configFile = '/home/sven/.rex/config.yml';
+	my $configFile = cfgFile;
+	$configFile =~ s/~/Rex::Config->_home_dir()/e;
 
     if (!defined($cfg) && -e $configFile) {
 		
@@ -65,7 +68,7 @@ sub import {
 
 		set virtualization => $cfg->{virtualization};
 	} else {
-		Rex::Logger::info("no $configFile found, using defaults (localhost)");
+		Rex::Logger::info("no ".cfgFile." file found, using defaults (localhost)");
 	}
 
 	return 1;

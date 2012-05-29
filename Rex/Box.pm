@@ -27,7 +27,7 @@ use Rex::Commands::Virtualization;
 use Rex::Commands::Fs;
 use Rex::Box::Config;
 
-use Data::Dumper;
+use YAML;
 
 #TODO: extract this so it only gets used if needed, and installed.
 use Net::VNC;
@@ -145,7 +145,7 @@ task "create", group => "hoster", sub {
     #refuse to create if the host already exists - test not only libvirsh, but dns etc too (add a --force..)
 #    my $host = do_task("Box:status");  #BUG? this do_task returns nothing :() - should work as we're on the same host, so could use the same forked process... else  IPC
     my $host = _status($params->{name});
-    #print 'info'.Dumper $host;
+    #print 'info'.Dump $host;
     if (!defined($host)) {
         print "Creating vm named: $params->{name} on $server\n";
         vm create => $params->{name},
@@ -224,7 +224,7 @@ lists the virtual machines in the RexConfig hoster group
 
 desc "lists the virtual machines in the RexConfig hoster group";
 task "list", group => "hoster", sub {    
-	print Dumper vm list => "all";
+	print Dump vm list => "all";
 };
 
 
@@ -236,7 +236,7 @@ task "start", group => "hoster", "name", sub {
     die 'need to define a --name= param' unless $params->{name};
     
     print "Starting vm named: $params->{name} \n";
-	print Dumper vm start => $params->{name};
+	print Dump vm start => $params->{name};
 };
 desc "stop --name=";
 task "stop", group => "hoster", "name", sub {    
@@ -246,7 +246,7 @@ task "stop", group => "hoster", "name", sub {
     die 'need to define a --name= param' unless $params->{name};
     
     print "Stoping vm named: $params->{name} \n";
-	print Dumper vm shutdown => $params->{name};
+	print Dump vm shutdown => $params->{name};
 };
 
 desc "status --name=";
@@ -264,7 +264,7 @@ sub _status {
     my $list = vm list => "all";
     foreach my $test (@$list) {
     	if ($test->{name} eq $hostname) {
-    		Rex::Logger::info(Dumper $test);
+    		Rex::Logger::info(Dump $test);
 
     		return $test;
     	}
@@ -278,7 +278,7 @@ task "info", group => "hoster", sub {
     #given that the list of params is built by rex, can it error out?
     die 'need to define a --name= param' unless $params->{name};
 
-    print Dumper vm dumpxml => $params->{name};
+    print Dump vm dumpxml => $params->{name};
 };
 
 

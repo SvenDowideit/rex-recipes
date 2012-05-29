@@ -69,6 +69,8 @@ sub import {
 		set virtualization => $cfg->{virtualization};
 	} else {
 		Rex::Logger::info("no ".cfgFile." file found, using defaults (localhost)");
+		Rex::Logger::info("  see Box:config task to set basic values of ~/.rex/config.yml");
+		$cfg = {};
 	}
 
 	return 1;
@@ -76,11 +78,11 @@ sub import {
 
 =pod
 
-=head2 get
+=head2 getCfg
 
 get a setting from the config file.
 
-my $templateImageDir = Box::Config::get(qw/hosts myhost TemplateImageDir/);
+my $templateImageDir = Box::Config->getCfg(qw/hosts myhost TemplateImageDir/);
 
 returns undef if the path is not found.
 
@@ -98,6 +100,51 @@ sub getCfg {
 		return $ref;
 }
 
+=pod
+
+=head2 setCfg
+
+set a setting from the config file.
+
+my $templateImageDir = Box::Config->setCfg(qw/hosts myhost TemplateImageDir/, '~/.rex/Box/Templates');
+
+
+=cut
+
+sub setCfg {
+		my $class = shift;
+		my @path = @_;
+		my $value = pop @path;
+		my $key = pop @path;
+		Rex::Logger::info("set ".join(':', @path).":$key to ($value)");
+
+		my $ref = $cfg;
+		foreach (@path) {
+			$ref->{$_} = {} unless (exists $ref->{$_});
+			$ref = $ref->{$_}
+		}
+		$ref->{$key} = $value;
+}
+
+
+=pod
+
+=head2 save
+
+set a setting from the config file.
+
+my $templateImageDir = Box::Config->setCfg(qw/hosts myhost TemplateImageDir/, '~/.rex/Box/Templates');
+
+
+=cut
+
+sub save {
+	my $class = shift;
+	return if (!defined $cfg);
+	my $configFile = cfgFile;
+	$configFile =~ s/~/Rex::Config->_home_dir()/e;
+	YAML::DumpFile($configFile, $cfg);
+}
 
 1;
 

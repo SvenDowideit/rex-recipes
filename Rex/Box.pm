@@ -329,8 +329,10 @@ task "vnc", group => "hoster", "name", sub {
     
     
     print "getting vnc server:port for vm named: $params->{name} \n";
-#TODO: replace * with server name - how do we get the name of the server?
     my $vnc = vm vncdisplay => $params->{name};
+    my $server = Rex::get_current_connection()->{server};
+	# replace * with server name
+    $vnc =~ s/\*/$server/e;
     print "VNC: $vnc\n";
 };
 
@@ -347,6 +349,19 @@ task "ip", group => "hoster", "name", sub {
     print "IP: ".join(',', @$ips)."\n";
 };
 
+desc 'set basic Rex::Box config file options';
+task 'config', sub {
+	my $params = shift;
+	unless (keys(%$params)) {
+		Rex::Logger::info <<"HERE";
+Configuration options for Rex::Box
+   --host= to set the host where your virtual machines are running
+HERE
+		exit;
+	}
+	Rex::Box::Config->setCfg(qw/groups hoster hosts/, $params->{host}) if (exists $params->{host});
+	Rex::Box::Config->save();
+};
 
 sub __use_vnc {
     my $vmname = shift;

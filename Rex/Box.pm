@@ -26,7 +26,9 @@ use Rex::Output;
 use Rex::Commands::Virtualization;
 use Rex::Commands::Fs;
 use Rex::Box::Config;
+use Rex::Box::Base;
 
+use File::Spec;
 use YAML;
 
 #TODO: extract this so it only gets used if needed, and installed.
@@ -85,7 +87,13 @@ sub runbefore {
        do_task 'Box:exists';
     	
        my $vmtask = Rex::TaskList->get_task("create");
-       my $base_box = Rex::Box::Config->getCfg(qw(Base TemplateImages), Rex::Box::Config->getCfg(qw(Base DefaultBox)));    
+       
+    #base_box settings
+    my $base_name = $params->{base} || Rex::Box::Config->get(qw(Base DefaultBox));
+    die "need to select a base image to create the vm from (either  --base= or set the Base:DefaultBox setting using Box:config)" unless ($base_name);
+    my $base_box = Rex::Box::Base->getBase($base_name);
+    die "sorry, base box '$base_name' is not configured yet - see Box:Base:config" unless ($base_box);       
+       
        $vmtask->set_user($base_box->{user});
        $vmtask->set_password($base_box->{password});
        
@@ -137,9 +145,21 @@ task "create", group => "hoster", sub {
     
     Rex::Logger::info('running Box:create on '.run 'uname -a');
     
+    #base_box settings
+    my $base_name = $params->{base} || Rex::Box::Config->get(qw(Base DefaultBox));
+    die "need to select a base image to create the vm from (either  --base= or set the Base:DefaultBox setting using Box:config)" unless ($base_name);
+    my $base_box = Rex::Box::Base->getBase($base_name);
+    die "sorry, base box '$base_name' is not configured yet - see Box:Base:config" unless ($base_box);
+
+	#vm hosting server settings
     my $server = Rex::get_current_connection()->{server};
-    my $base_box = Rex::Box::Config->getCfg(qw(Base TemplateImages), Rex::Box::Config->getCfg(qw(Base DefaultBox)));
-    
+    my $imageDir = Rex::Box::Config->getCfg('hosts', $server, 'ImageDir');
+    die "hosts:$server:ImageDir not set yet - need to know where to put the new vm's disk image" unless $imageDir;
+    #libvirsh can create but can't start a vm that uses ~/
+	$imageDir =~ s/~/Rex::Config->_home_dir()/e;
+    my $templateImageDir = Rex::Box::Config->getCfg('hosts', $server, 'TemplateImageDir') || '~/.rex/Base';
+    die "hosts:$server:TemplateImageDir not set yet - need to know where to put the new vm's disk image" unless $templateImageDir;
+	#TODO: need to test for, download and possibly convert basebox image..
     
     #TODO: refuse to name a vm with chars you can't use in a hostname
     #refuse to create if the host already exists - test not only libvirsh, but dns etc too (add a --force..)
@@ -155,8 +175,8 @@ task "create", group => "hoster", sub {
          },],
          storage     => [
              {
-                file   => Rex::Box::Config->getCfg('hosts', $server, 'ImageDir').$params->{name}.".img",
-                template   => Rex::Box::Config->getCfg('hosts', $server, 'TemplateImageDir').$base_box->{ImageFile},
+                file   => File::Spec->catfile($imageDir, $params->{name}.".img"),
+                template   => File::Spec->catfile($templateImageDir, $base_box->{imagefile}),
              },
           ],
           graphics => { type=>'vnc',
@@ -193,7 +213,7 @@ task "create", group => "hoster", sub {
     
     #TODO: terrible assumption - how to deal with more than one network interface per host?
     print "IP: --$$ips[0]--\n";
-    if ($$ips[0] eq $ping_ip) {
+    if (defined($ping_ip) && ($$ips[0] eq $ping_ip)) {
     	print "hostname already mapped to IP, and mac - flying by the seat of our pants\n";
     }
 
@@ -286,6 +306,10 @@ desc "delete --name=";
 task "delete", group => "hoster", "name", sub {    
     my ($params) = @_;
     
+    my $server = Rex::get_current_connection()->{server};
+    my $imgDir = Rex::Box::Config->getCfg('hosts', $server, 'ImageDir');
+    die "need to set hosts:$server:ImageDir in Box:config" unless $imgDir;
+    
     #given that the list of params is built by rex, can it error out?
     die 'need to define a --name= param' unless $params->{name};
     
@@ -309,12 +333,11 @@ task "delete", group => "hoster", "name", sub {
     	return -1;
     }
 
-    my $server = Rex::get_current_connection()->{server};
     
     print "Deleting vm named: $params->{name}from $server \n";
 	vm delete => $params->{name};
     print "Deleting image named: vm_imagesdir.$params->{name}.img \n";
-    rm Rex::Box::Config->getCfg('hosts', $server, 'ImageDir').$params->{name}.".img";
+    rm $imgDir.$params->{name}.".img";
 	
 };
 
@@ -354,12 +377,21 @@ task 'config', sub {
 	my $params = shift;
 	unless (keys(%$params)) {
 		Rex::Logger::info <<"HERE";
-Configuration options for Rex::Box
+Configuration options for 
+   rex Box:config
    --host= to set the host where your virtual machines are running
+   
+   --any:colon:separated:path=value that is not listed above will also be saved into the config.yml
 HERE
 		exit;
 	}
-	Rex::Box::Config->setCfg(qw/groups hoster hosts/, $params->{host}) if (exists $params->{host});
+	#Rex::Logger::info("found keys: ".join(', ', keys(%$params)));
+	foreach my $key (keys(%$params)) {
+			Rex::Box::Config->setCfg(qw/groups hoster hosts/, $params->{host}) if ($key eq 'host');
+			next if ($key eq 'host');
+			Rex::Box::Config->setCfg($key, $params->{$key});
+	}
+	
 	Rex::Box::Config->save();
 };
 
@@ -469,7 +501,7 @@ quickly manage virtual machine configurations and deployments
 
 Or, to use it from a project's Rexfile
 
- use Box;
+ use Rex::Box;
     
  task "create", sub {
     Box::create({

@@ -76,6 +76,13 @@ sub runbefore {
           exit;
        }
        
+		#base_box settings (needed to get the vm's user&pass)
+		my $base_name = $params->{base} || Rex::Box::Config->get(qw(Base DefaultBox));
+		die "need to select a base image to create the vm from (either  --base= or set the Base:DefaultBox setting using Box:config)" unless ($base_name);
+###Box::Base::exists(\{%params, base=>$base_name});  #make sure the basebox is ready to go locally
+		my $base_box = Rex::Box::Base->getBase($base_name);
+		die "sorry, base box '$base_name' is not configured yet - see Box:Base:config" unless ($base_box);       
+       
        Rex::Logger::info('running before create on '.run 'uname -a');
        
        group 'vm', $params->{name};
@@ -85,14 +92,11 @@ sub runbefore {
        #make sure the vm exists, or create it
        #Rex::TaskList->get_task("Box:exists")->run($cfg->{virtualization_host}, params => $params);
        do_task 'Box:exists';
+       #exists(%$params);
     	
        my $vmtask = Rex::TaskList->get_task("create");
        
-    #base_box settings
-    my $base_name = $params->{base} || Rex::Box::Config->get(qw(Base DefaultBox));
-    die "need to select a base image to create the vm from (either  --base= or set the Base:DefaultBox setting using Box:config)" unless ($base_name);
-    my $base_box = Rex::Box::Base->getBase($base_name);
-    die "sorry, base box '$base_name' is not configured yet - see Box:Base:config" unless ($base_box);       
+       #TODO: need to add this info to the destination server's cfg, so the box can later be deleted.
        
        $vmtask->set_user($base_box->{user});
        $vmtask->set_password($base_box->{password});
@@ -102,9 +106,6 @@ sub runbefore {
        $$server_ref = $params->{name};
        
        pass_auth(); #TODO: it bothers me that pass_auth works different from user() and password()
-       #TODO: looks like specifying the host here isn't working
-       #$vmtask->run($params->{name}, params => $params);
-       #do_task 'create';
 }
 
 
@@ -148,6 +149,7 @@ task "create", group => "hoster", sub {
     #base_box settings
     my $base_name = $params->{base} || Rex::Box::Config->get(qw(Base DefaultBox));
     die "need to select a base image to create the vm from (either  --base= or set the Base:DefaultBox setting using Box:config)" unless ($base_name);
+    Rex::Box::Base::exists({%$params, base_box_name=>$base_name});  #make sure we have an image, in the right format for this host, and in the right locations..
     my $base_box = Rex::Box::Base->getBase($base_name);
     die "sorry, base box '$base_name' is not configured yet - see Box:Base:config" unless ($base_box);
 
@@ -157,7 +159,7 @@ task "create", group => "hoster", sub {
     die "hosts:$server:ImageDir not set yet - need to know where to put the new vm's disk image" unless $imageDir;
     #libvirsh can create but can't start a vm that uses ~/
 	$imageDir =~ s/~/Rex::Config->_home_dir()/e;
-    my $templateImageDir = Rex::Box::Config->getCfg('hosts', $server, 'TemplateImageDir') || '~/.rex/Base';
+	my $templateImageDir = Rex::Box::Base::getTemplateImageDir(undef, $params->{base});
     die "hosts:$server:TemplateImageDir not set yet - need to know where to put the new vm's disk image" unless $templateImageDir;
 	#TODO: need to test for, download and possibly convert basebox image..
     
@@ -167,6 +169,16 @@ task "create", group => "hoster", sub {
     my $host = _status($params->{name});
     #print 'info'.Dump $host;
     if (!defined($host)) {
+		#make sure the template file (and dir) is on the remote host.
+		my $template = File::Spec->catfile($templateImageDir, $base_box->{imagefile});
+		unless (is_file($template)) {
+				#TODO: should probly move this to Box::Base
+				mkdir($templateImageDir) unless is_dir($templateImageDir);
+
+				my $localTemplateImageDir = Rex::Box::Base::getTemplateImageDir('<local>', $params->{base});
+				my $localtemplate = File::Spec->catfile($localTemplateImageDir, $base_box->{imagefile});
+				file $template, source => $localtemplate;
+		}
         print "Creating vm named: $params->{name} on $server\n";
         vm create => $params->{name},
 		network => [
@@ -176,7 +188,7 @@ task "create", group => "hoster", sub {
          storage     => [
              {
                 file   => File::Spec->catfile($imageDir, $params->{name}.".img"),
-                template   => File::Spec->catfile($templateImageDir, $base_box->{imagefile}),
+                template   => $template,
              },
           ],
           graphics => { type=>'vnc',

@@ -6,6 +6,7 @@
 # manage base boxes for creating new vm's
 
 #TODO: it might be better for each base box to have its own config file - so they can just be rsynced
+#vagrant-bootstrap: steal everything from https://github.com/garethr/vagrantboxes-heroku/blob/master/www/index.html
 
 package Rex::Box::Base;
 
@@ -244,6 +245,7 @@ sub getTemplateImageDir {
     my $server = shift || Rex::get_current_connection()->{server};
     my $templateImageDir = Rex::Box::Config->getCfg('hosts', $server, 'TemplateImageDir') || '~/.rex/Base';
 	$templateImageDir =~ s/~/Rex::Config->_home_dir()/e;
+	shift unless defined($_[0]);
     return File::Spec->catdir($templateImageDir, @_);
 }
 

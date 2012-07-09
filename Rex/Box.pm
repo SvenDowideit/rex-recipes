@@ -348,8 +348,10 @@ task "delete", group => "hoster", "name", sub {
     
     print "Deleting vm named: $params->{name}from $server \n";
 	vm delete => $params->{name};
-    print "Deleting image named: vm_imagesdir.$params->{name}.img \n";
-    rm $imgDir.$params->{name}.".img";
+    print "Deleting image named: $imgDir/$params->{name}.img \n";
+    #rm "$imgDir/$params->{name}.img";
+    #Fs::rm doesn't do an rm -f
+    run "rm -f $imgDir/$params->{name}.img";
 	
 };
 

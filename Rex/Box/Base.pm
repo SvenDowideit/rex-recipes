@@ -1,8 +1,8 @@
 #
 # AUTHOR: Sven Dowideit <SvenDowideit@fosiki.com>
-# REQUIRES: 
+# REQUIRES:
 # LICENSE: Apache License 2.0
-# 
+#
 # manage base boxes for creating new vm's
 
 #TODO: it might be better for each base box to have its own config file - so they can just be rsynced
@@ -10,13 +10,11 @@
 
 package Rex::Box::Base;
 
-
 use 5.010;
 use strict;
 use warnings;
 
 our $VERSION = '0.01';
-
 
 use Rex -base;
 use Rex::Config;
@@ -40,13 +38,14 @@ list all the available baseboxes
 
 desc "list base boxes";
 task "list", sub {
-	my $base = Rex::Box::Config->getCfg(qw/Base TemplateImages/);
-	if ($base) {
+    my $base = Rex::Box::Config->getCfg(qw/Base TemplateImages/);
+    if ($base) {
         print YAML::Dump $base;
-	} else {
-		print "no base boxes defined yet\n";
-		add();
-	}
+    }
+    else {
+        print "no base boxes defined yet\n";
+        add();
+    }
 };
 
 =pod
@@ -77,9 +76,9 @@ Base:
 
 desc "add a new base box";
 task "add", sub {
-	my $params = shift;
-	unless (keys(%$params) && $params->{name}) {
-		Rex::Logger::info <<"HERE";
+    my $params = shift;
+    unless ( keys(%$params) && $params->{name} ) {
+        Rex::Logger::info <<"HERE";
 Add or edit a Base Box to be used to create new boxes 
    rex Box:Base:add
    --name= basebox name
@@ -91,85 +90,100 @@ Add or edit a Base Box to be used to create new boxes
    
    NOTE that at the moment, we use vnc to initialise the vm, so need the root user and password (sudo isn't done yet)
 HERE
-		exit;
-	}
-	
-	my $templateImageDir = getTemplateImageDir(undef, $params->{name});
-	#TODO: make_path nees to be in Rex::Commands::Fs
-	make_path($templateImageDir);
+        exit;
+    }
 
-    my ($imageFile, $imagePath);
-    if 	(!Rex::Box::Config->getCfg(@path, 'imagefile') && 
-        !exists($params->{image}) &&
-        Rex::Box::Config->getCfg(@path, 'image')) {
-		#lets try again
-		$params->{image} = Rex::Box::Config->getCfg(@path, 'image');
-	}
-    if ($params->{image}) {
-		my $new_image = $params->{image};
-		$new_image =~ s/~/Rex::Config->_home_dir()/e;
+    my $templateImageDir = getTemplateImageDir( undef, $params->{name} );
 
-		my ($volume, $directories);
-        ($volume, $directories, $imageFile) = File::Spec->splitpath( $new_image );
-        $imagePath = File::Spec->catfile($templateImageDir, $imageFile);
+    #TODO: make_path nees to be in Rex::Commands::Fs
+    make_path($templateImageDir);
 
-		if (is_file($new_image)) {
-			Rex::Logger::info("copying $new_image to $imagePath");
-			cp($new_image, $imagePath);
-		} else {
-			#TODO: really would be better to test for updates..
-			unless (-e $imagePath) {
-				Rex::Logger::info("downloading $new_image to $imagePath");
+    my ( $imageFile, $imagePath );
+    if (   !Rex::Box::Config->getCfg( @path, 'imagefile' )
+        && !exists( $params->{image} )
+        && Rex::Box::Config->getCfg( @path, 'image' ) )
+    {
+
+        #lets try again
+        $params->{image} = Rex::Box::Config->getCfg( @path, 'image' );
+    }
+    if ( $params->{image} ) {
+        my $new_image = $params->{image};
+        $new_image =~ s/~/Rex::Config->_home_dir()/e;
+
+        my ( $volume, $directories );
+        ( $volume, $directories, $imageFile ) =
+          File::Spec->splitpath($new_image);
+        $imagePath = File::Spec->catfile( $templateImageDir, $imageFile );
+
+        if ( is_file($new_image) ) {
+            Rex::Logger::info("copying $new_image to $imagePath");
+            cp( $new_image, $imagePath );
+        }
+        else {
+
+            #TODO: really would be better to test for updates..
+            unless ( -e $imagePath ) {
+                Rex::Logger::info("downloading $new_image to $imagePath");
+
                 #is is a URL or scp or?
-                download($new_image, $imagePath);
-			} else {
-				Rex::Logger::info("using $imagePath");
-			}
-		}
-	}
-	#TODO: what about more than one disk file?
-	if ($imagePath && -e $imagePath) {
-		if ($imagePath =~ /box$/ && !exists($params->{user}) && !exists($params->{password})) {
-			$params->{user} = 'root';
-			$params->{password} = 'vagrant';
-		}
-		Rex::Logger::info("extracting $imageFile");
-		#TODO: i'd like it to leave the original .gz file..
-		extract($imagePath, to=>$templateImageDir);
-		#TODO: no idea what to do with sub-dirs..
-		my @files = ls($templateImageDir);
-		foreach my $file (@files) {
-			my $filePath = File::Spec->catfile($templateImageDir, $file);
-			next unless -f $filePath;
-			print $filePath."\n";
+                download( $new_image, $imagePath );
+            }
+            else {
+                Rex::Logger::info("using $imagePath");
+            }
+        }
+    }
 
-			#looks like i can't actually use cluster size
-			if ($file =~ /(vdi|vmdk)$/) {
-				$params->{imagefile} = $file;
-				last;
-			}
+    #TODO: what about more than one disk file?
+    if ( $imagePath && -e $imagePath ) {
+        if (   $imagePath =~ /box$/
+            && !exists( $params->{user} )
+            && !exists( $params->{password} ) )
+        {
+            $params->{user}     = 'root';
+            $params->{password} = 'vagrant';
+        }
+        Rex::Logger::info("extracting $imageFile");
 
-			#use qemu-img info to test if its an image it knows
-			#TODO: see LibVirt::create for QEMU-IMG stuff that needs extraction
-			my $result = `qemu-img info $filePath`;
-			Rex::Logger::info($result);
-			if ($result =~ /cluster_size/) {
-				#I'm guessing this is an indicator of a disk img
-				$params->{imagefile} = $file;
-				last;
-			}
-		}
-	}
-	
-	my @path = (qw/Base TemplateImages/, $params->{name});
-	
-	#Rex::Logger::info("found keys: ".join(', ', keys(%$params)));
-	foreach my $key (keys(%$params)) {
-			next if ($key eq 'name');
-			Rex::Box::Config->setCfg(@path, $key, $params->{$key});
-	}
-	
-	Rex::Box::Config->save();    
+        #TODO: i'd like it to leave the original .gz file..
+        extract( $imagePath, to => $templateImageDir );
+
+        #TODO: no idea what to do with sub-dirs..
+        my @files = ls($templateImageDir);
+        foreach my $file (@files) {
+            my $filePath = File::Spec->catfile( $templateImageDir, $file );
+            next unless -f $filePath;
+            print $filePath. "\n";
+
+            #looks like i can't actually use cluster size
+            if ( $file =~ /(vdi|vmdk)$/ ) {
+                $params->{imagefile} = $file;
+                last;
+            }
+
+            #use qemu-img info to test if its an image it knows
+            #TODO: see LibVirt::create for QEMU-IMG stuff that needs extraction
+            my $result = `qemu-img info $filePath`;
+            Rex::Logger::info($result);
+            if ( $result =~ /cluster_size/ ) {
+
+                #I'm guessing this is an indicator of a disk img
+                $params->{imagefile} = $file;
+                last;
+            }
+        }
+    }
+
+    my @path = ( qw/Base TemplateImages/, $params->{name} );
+
+    #Rex::Logger::info("found keys: ".join(', ', keys(%$params)));
+    foreach my $key ( keys(%$params) ) {
+        next if ( $key eq 'name' );
+        Rex::Box::Config->setCfg( @path, $key, $params->{$key} );
+    }
+
+    Rex::Box::Config->save();
 
 };
 
@@ -185,38 +199,44 @@ so lots of rsyncing around
 
 =cut
 
-desc "do whatever it takes to make the base box exist where the hoster needs it.";
+desc
+  "do whatever it takes to make the base box exist where the hoster needs it.";
 task "exists", sub {
-	my $params = shift;
-	unless ($params->{base_box_name}) {
-		Rex::Logger::info <<"HERE";
+    my $params = shift;
+    unless ( $params->{base_box_name} ) {
+        Rex::Logger::info <<"HERE";
 initialise a Base Box to be used to create new boxes 
    rex Box:Base:exists
    --base_box_name= basebox name
 HERE
-		exit;
-	}
-	my $base_box = Rex::Box::Config->getCfg(qw/Base TemplateImages/, $params->{base_box_name});
-	unless ($base_box) {
-		Rex::Logger::info <<"HERE";
+        exit;
+    }
+    my $base_box = Rex::Box::Config->getCfg( qw/Base TemplateImages/,
+        $params->{base_box_name} );
+    unless ($base_box) {
+        Rex::Logger::info <<"HERE";
 $params->{base_box_name} not defined on this host.
 #TODO: look on hoster..
 #TODO: look on the net..
 HERE
-		exit;
-	}
-	
-    my $templateImageDir = getTemplateImageDir(undef, $params->{base_box_name});
-	
-	my $hosterTemplateFile = File::Spec->catfile($templateImageDir, $base_box->{imagefile});
-	unless (is_file($hosterTemplateFile)) {
-		#look locally, or URL, build and send over..
-	}
-	#TODO: conversions..
-	
-	#Rex::Box::Config->setCfg(@path, $key, $params->{$key});
-	
-	#Rex::Box::Config->save();    
+        exit;
+    }
+
+    my $templateImageDir =
+      getTemplateImageDir( undef, $params->{base_box_name} );
+
+    my $hosterTemplateFile =
+      File::Spec->catfile( $templateImageDir, $base_box->{imagefile} );
+    unless ( is_file($hosterTemplateFile) ) {
+
+        #look locally, or URL, build and send over..
+    }
+
+    #TODO: conversions..
+
+    #Rex::Box::Config->setCfg(@path, $key, $params->{$key});
+
+    #Rex::Box::Config->save();
 
 };
 
@@ -234,19 +254,21 @@ returns undef if the box is not found.
 =cut
 
 sub getBase {
-	my $class = shift;
-	my $boxname = shift;
-	
-	my $base = Rex::Box::Config->getCfg(qw/Base TemplateImages/, $boxname);
-	return $base;
+    my $class   = shift;
+    my $boxname = shift;
+
+    my $base = Rex::Box::Config->getCfg( qw/Base TemplateImages/, $boxname );
+    return $base;
 }
 
 sub getTemplateImageDir {
     my $server = shift || Rex::get_current_connection()->{server};
-    my $templateImageDir = Rex::Box::Config->getCfg('hosts', $server, 'TemplateImageDir') || '~/.rex/Base';
-	$templateImageDir =~ s/~/Rex::Config->_home_dir()/e;
-	shift unless defined($_[0]);
-    return File::Spec->catdir($templateImageDir, @_);
+    my $templateImageDir =
+      Rex::Box::Config->getCfg( 'hosts', $server, 'TemplateImageDir' )
+      || '~/.rex/Base';
+    $templateImageDir =~ s/~/Rex::Config->_home_dir()/e;
+    shift unless defined( $_[0] );
+    return File::Spec->catdir( $templateImageDir, @_ );
 }
 
 1;

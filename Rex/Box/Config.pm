@@ -46,7 +46,7 @@ defines groups, sets the virtualisation type, and tells Rex::Box about known vm 
 =cut
 
 our $cfg;
-use constant cfgDir => '~/.rex';
+use constant cfgDir  => '~/.rex';
 use constant cfgFile => 'config.yml';
 
 =pod
@@ -59,45 +59,49 @@ list all the available baseboxes
 
 desc "list config";
 task "list", sub {
-	my $base = Rex::Box::Config->getCfg();
-	print YAML::Dump $base;
+    my $base = Rex::Box::Config->getCfg();
+    print YAML::Dump $base;
 };
 
-
 sub import {
-	my $class = shift;
+    my $class = shift;
 
+    if ( !defined($cfg) ) {
+        my $configFile = cfgDir . '/' . cfgFile;
+        $configFile =~ s/~/Rex::Config->_home_dir()/e;
 
-    if (!defined($cfg)) {
-			my $configFile = cfgDir.'/'.cfgFile;
-			$configFile =~ s/~/Rex::Config->_home_dir()/e;
+        if ( -e $configFile ) {
 
-		if (-e $configFile) {
-				
-				#TODO: move the cfg code out into a 'task module cfg / persistence module'
-				#tasks need to register what options they need so that we can test and die before we start running them
-				$cfg = YAML::LoadFile($configFile);
+#TODO: move the cfg code out into a 'task module cfg / persistence module'
+#tasks need to register what options they need so that we can test and die before we start running them
+            $cfg = YAML::LoadFile($configFile);
 
-				#print "\n= Loaded ==========\n".YAML::Dump($cfg)."\n===========\n";
+            #print "\n= Loaded ==========\n".YAML::Dump($cfg)."\n===========\n";
 
-				map {
-						my $hosts = Rex::Box::Config->get('groups', $_, 'hosts') ;
-						#TODO: need to support lists..., and lists on cmdline (csv?)
-						group $_, $hosts if ($hosts ne '1');
-						
-				} keys (%{$cfg->{groups}});
+            map {
+                my $hosts = Rex::Box::Config->get( 'groups', $_, 'hosts' );
 
-				set virtualization => $cfg->{virtualization};
-			} else {
-				Rex::Logger::info("no ".cfgDir.'/'.cfgFile." file found, using defaults (localhost)");
-				Rex::Logger::info("  see Box:config task to set basic values of ".cfgDir.'/'.cfgFile);
-				$cfg = {};
-			}
-	}
+                #TODO: need to support lists..., and lists on cmdline (csv?)
+                group $_, $hosts if ( $hosts ne '1' );
 
-	return 1;
+            } keys( %{ $cfg->{groups} } );
+
+            set virtualization => $cfg->{virtualization};
+        }
+        else {
+            Rex::Logger::info( "no " 
+                  . cfgDir . '/' 
+                  . cfgFile
+                  . " file found, using defaults (localhost)" );
+            Rex::Logger::info( "  see Box:config task to set basic values of " 
+                  . cfgDir . '/'
+                  . cfgFile );
+            $cfg = {};
+        }
+    }
+
+    return 1;
 }
-
 
 =pod
 
@@ -113,21 +117,20 @@ returns undef if the path is not found.
 =cut
 
 sub get {
-		my $class = shift;
-		die 'here' unless $class eq 'Rex::Box::Config';
-		my @path = @_;
-		
-		#TODO: consider shortcut maps of cfg's specified by the task module
-		my $paramname = join(':', @path);
-		my %params = Rex::Args->get();
-		
-		my $val = $params{$paramname};
-		return $val if (defined($val));
-		
-		#TODO: if there's only one element in @path, and if it has :'s, split it..
-		return Rex::Box::Config->getCfg(@path);
-}
+    my $class = shift;
+    die 'here' unless $class eq 'Rex::Box::Config';
+    my @path = @_;
 
+    #TODO: consider shortcut maps of cfg's specified by the task module
+    my $paramname = join( ':', @path );
+    my %params = Rex::Args->get();
+
+    my $val = $params{$paramname};
+    return $val if ( defined($val) );
+
+    #TODO: if there's only one element in @path, and if it has :'s, split it..
+    return Rex::Box::Config->getCfg(@path);
+}
 
 =pod
 
@@ -145,15 +148,15 @@ It'd be nice if there was a get() that also took values from $params, to over-ri
 =cut
 
 sub getCfg {
-		my $class = shift;
-		my @path = @_;
+    my $class = shift;
+    my @path  = @_;
 
-		my $ref = $cfg;
-		foreach (@path) {
-			last if (!defined($ref));
-			$ref = $ref->{$_};
-		}
-		return $ref;
+    my $ref = $cfg;
+    foreach (@path) {
+        last if ( !defined($ref) );
+        $ref = $ref->{$_};
+    }
+    return $ref;
 }
 
 =pod
@@ -173,24 +176,23 @@ Box::Config->setCfg(hosts:myhost:TemplateImageDir, '~/.rex/Box/Templates');
 =cut
 
 sub setCfg {
-		my $class = shift;
-		my @path = @_;
-		my $value = pop @path;
-		my $key = pop @path;
-		if ($key =~ /:/) {
-			@path = split(/:/, $key);
-			$key = pop @path;
-		}
-		Rex::Logger::info("set ".join(':', @path).":$key to ($value)");
+    my $class = shift;
+    my @path  = @_;
+    my $value = pop @path;
+    my $key   = pop @path;
+    if ( $key =~ /:/ ) {
+        @path = split( /:/, $key );
+        $key = pop @path;
+    }
+    Rex::Logger::info( "set " . join( ':', @path ) . ":$key to ($value)" );
 
-		my $ref = $cfg;
-		foreach (@path) {
-			$ref->{$_} = {} unless (exists $ref->{$_});
-			$ref = $ref->{$_}
-		}
-		$ref->{$key} = $value;
+    my $ref = $cfg;
+    foreach (@path) {
+        $ref->{$_} = {} unless ( exists $ref->{$_} );
+        $ref = $ref->{$_};
+    }
+    $ref->{$key} = $value;
 }
-
 
 =pod
 
@@ -204,12 +206,12 @@ my $templateImageDir = Box::Config->setCfg(qw/hosts myhost TemplateImageDir/, '~
 =cut
 
 sub save {
-	my $class = shift;
-	return if (!defined $cfg);
-	my $configDir = cfgDir;
-	$configDir =~ s/~/Rex::Config->_home_dir()/e;
-	make_path($configDir);
-	YAML::DumpFile($configDir.'/'.cfgFile, $cfg);
+    my $class = shift;
+    return if ( !defined $cfg );
+    my $configDir = cfgDir;
+    $configDir =~ s/~/Rex::Config->_home_dir()/e;
+    make_path($configDir);
+    YAML::DumpFile( $configDir . '/' . cfgFile, $cfg );
 }
 
 1;

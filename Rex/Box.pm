@@ -171,15 +171,18 @@ task "create", group => "hoster", sub {
     if (!defined($host)) {
 		#make sure the template file (and dir) is on the remote host.
 		my $template = File::Spec->catfile($templateImageDir, $base_box->{imagefile});
+        print "Creating vm named: $params->{name} on $server from $base_name using $template\n";
 		unless (is_file($template)) {
+				my $localTemplateImageDir = Rex::Box::Base::getTemplateImageDir('<local>', $params->{base});
+				my $localtemplate = File::Spec->catfile($localTemplateImageDir, $base_box->{imagefile});
+
+		    print "uploading template from $localtemplate\n";
 				#TODO: should probly move this to Box::Base
 				mkdir($templateImageDir) unless is_dir($templateImageDir);
 
-				my $localTemplateImageDir = Rex::Box::Base::getTemplateImageDir('<local>', $params->{base});
-				my $localtemplate = File::Spec->catfile($localTemplateImageDir, $base_box->{imagefile});
 				file $template, source => $localtemplate;
 		}
-        print "Creating vm named: $params->{name} on $server\n";
+		print "creating.....\n";
         vm create => $params->{name},
 		network => [
          {  type    => "bridge",

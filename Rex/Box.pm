@@ -139,36 +139,92 @@ lists the virtual machines in the RexConfig hoster group
 desc "create";
 task "create", group => "hoster", sub {
     my ($params) = @_;
-
     #given that the list of params is built by rex, can it error out?
     die 'need to define a --name= param' unless $params->{name};
     die "--name=$params->{name} ambiguous, please use another name" if ($params->{name} eq '1');
     
-    Rex::Logger::info('running Box:create on '.run 'uname -a');
-    
-    #base_box settings
-    my $base_name = $params->{base} || Rex::Box::Config->get(qw(Base DefaultBox));
-    die "need to select a base image to create the vm from (either  --base= or set the Base:DefaultBox setting using Box:config)" unless ($base_name);
-    Rex::Box::Base::exists({%$params, base_box_name=>$base_name});  #make sure we have an image, in the right format for this host, and in the right locations..
-    my $base_box = Rex::Box::Base->getBase($base_name);
-    die "sorry, base box '$base_name' is not configured yet - see Box:Base:config" unless ($base_box);
 
-	#vm hosting server settings
-    my $server = Rex::get_current_connection()->{server};
-    my $imageDir = Rex::Box::Config->getCfg('hosts', $server, 'ImageDir');
-    die "hosts:$server:ImageDir not set yet - need to know where to put the new vm's disk image" unless $imageDir;
-    #libvirsh can create but can't start a vm that uses ~/
-	$imageDir =~ s/~/Rex::Config->_home_dir()/e;
-	my $templateImageDir = Rex::Box::Base::getTemplateImageDir(undef, $params->{base});
-    die "hosts:$server:TemplateImageDir not set yet - need to know where to put the new vm's disk image" unless $templateImageDir;
-	#TODO: need to test for, download and possibly convert basebox image..
-    
-    #TODO: refuse to name a vm with chars you can't use in a hostname
+    Rex::Logger::info('running Box:create on '.run 'uname -a');
+
     #refuse to create if the host already exists - test not only libvirsh, but dns etc too (add a --force..)
 #    my $host = do_task("Box:status");  #BUG? this do_task returns nothing :() - should work as we're on the same host, so could use the same forked process... else  IPC
     my $host = _status($params->{name});
-    #print 'info'.Dump $host;
-    if (!defined($host)) {
+    #base_box settings
+    my $base_name = $params->{base} || Rex::Box::Config->get(qw(Base DefaultBox));
+    my $base_box = Rex::Box::Base->getBase($base_name);
+
+    if (defined($host)) {
+        print 'info'.Dump $host;
+
+    	#TODO: can't do this - without IPC, the initial task doesn't know about the die, so continues on
+    	#die "$params->{name} already exists - you can --force it if you need\n" unless ($params->{force});
+    	print "using exiting host: $params->{name}\n";
+    	vm start => $params->{name} unless ($host->{status} eq 'running');
+    } else {
+
+
+	    #vm hosting server settings
+        my $server = Rex::get_current_connection()->{server};
+        my $imageDir = Rex::Box::Config->getCfg('hosts', $server, 'ImageDir');
+        die "hosts:$server:ImageDir not set yet - need to know where to put the new vm's disk image" unless $imageDir;
+        #libvirsh can create but can't start a vm that uses ~/
+	    $imageDir =~ s/~/Rex::Config->_home_dir()/e;
+
+		my %vmCfg = (
+		    network => [
+             {  type    => "bridge",
+                bridge  => "br100",
+             },],
+             storage     => [
+                 {
+                 },
+              ],
+              graphics => { type=>'vnc',
+                            port=>'-1',
+                            autoport=>'yes',
+                            listen=>'*'
+              }
+		);
+
+    
+    die "need to select a base image to create the vm from (either  --base= or set the Base:DefaultBox setting using Box:config)" unless ($base_name);
+    if ($base_name =~ /\.iso/i) {
+        #die "$base_name does not exist" unless (-f $base_name);
+    
+        #use an iso
+        #TODO: I wonder if we can store the basebox name used to create this vm
+	    $vmCfg{storage}[0] = {
+                    file   => File::Spec->catfile($imageDir, $params->{name}.".img"),
+                    size   => '5G'
+	    };
+	    #make sure the ISO is on the remote server
+	    my $localISO = $base_name;
+	    $localISO =~ s/~/Rex::Config->_home_dir()/e;
+        my ($volume, $directories, $imageFile) = File::Spec->splitpath( $localISO );	    
+	    my $templateImageDir = Rex::Box::Base::getTemplateImageDir(undef, 'ISOs');
+		my $ISO = File::Spec->catfile($templateImageDir, $imageFile);
+		if (!is_file($ISO )) {
+		    print "uploading $ISO from $localISO\n";
+				#TODO: should probly move this to Box::Base
+		    mkdir($templateImageDir) unless is_dir($templateImageDir);
+
+		    file $ISO, source => $localISO;
+		}
+		
+	    $vmCfg{storage}[1] = {
+                    file   => $ISO,
+	    };
+	    $vmCfg{boot} = 'cdrom';
+
+    } else {
+        #use a Base Box
+        Rex::Box::Base::exists({%$params, base_box_name=>$base_name});  #make sure we have an image, in the right format for this host, and in the right locations..
+        die "sorry, base box '$base_name' is not configured yet - see Box:Base:config" unless ($base_box);
+
+	    my $templateImageDir = Rex::Box::Base::getTemplateImageDir(undef, $params->{base});
+        die "hosts:$server:TemplateImageDir not set yet - need to know where to put the new vm's disk image" unless $templateImageDir;
+	    #TODO: need to test for, download and possibly convert basebox image..
+
 		#make sure the template file (and dir) is on the remote host.
 		my $template = File::Spec->catfile($templateImageDir, $base_box->{imagefile});
         print "Creating vm named: $params->{name} on $server from $base_name using $template\n";
@@ -182,31 +238,21 @@ task "create", group => "hoster", sub {
 
 				file $template, source => $localtemplate;
 		}
+
+        #TODO: I wonder if we can store the basebox name used to create this vm
+	    $vmCfg{storage}[0] = {
+                    file   => File::Spec->catfile($imageDir, $params->{name}.".img"),
+                    template   => $template,
+	    };
+    }
+    
+    #TODO: refuse to name a vm with chars you can't use in a hostname
 		print "creating.....\n";
-        vm create => $params->{name},
-		network => [
-         {  type    => "bridge",
-            bridge  => "br100",
-         },],
-         storage     => [
-             {
-                file   => File::Spec->catfile($imageDir, $params->{name}.".img"),
-                template   => $template,
-             },
-          ],
-          graphics => { type=>'vnc',
-                        port=>'-1',
-                        autoport=>'yes',
-                        listen=>'*'
-          };
+        vm create => $params->{name}, %vmCfg;
         print "Starting vm named: $params->{name} \n";
           
         vm start => $params->{name};
-    } else {
-    	#TODO: can't do this - without IPC, the initial task doesn't know about the die, so continues on
-    	#die "$params->{name} already exists - you can --force it if you need\n" unless ($params->{force});
-    	print "using exiting host: $params->{name}\n";
-    	vm start => $params->{name} unless ($host->{status} eq 'running');
+
     }      
 
 	#I'd like to move this into an 'after Box:exists but something goes wrong.
@@ -215,6 +261,13 @@ task "create", group => "hoster", sub {
 	my $ping = run "ping -c1 $params->{name}";
 	$ping =~ /\((.*?)\)/;
 	my $ping_ip = $1;
+
+    unless (defined($base_box)) {
+        my $vnc = vm vncdisplay => $vmname;
+
+        print "-- insufficient info to do more setup (try vnc: $vnc)\n";
+        return;
+    }
 	
     my $ips;
     my $count = 0;

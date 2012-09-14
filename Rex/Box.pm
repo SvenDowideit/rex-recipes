@@ -11,7 +11,7 @@ use 5.010;
 use strict;
 use warnings;
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 use Rex -base;
 use Rex::Config;
@@ -211,11 +211,24 @@ task "create",
 
          #use an iso
          #TODO: I wonder if we can store the basebox name used to create this vm
+         #this is the virtio disk - not very useful for win2008 etc
             $vmCfg{storage}[0] = {
                 file =>
                   File::Spec->catfile( $imageDir, $params->{name} . ".img" ),
-                size => '5G'
+                size => '10G'
             };
+            #so using ide instead
+            $vmCfg{storage}[0] = { 
+                size => '10G',
+               bus=> 'ide',
+                file => File::Spec->catfile( $imageDir, $params->{name} . ".img" ), 
+                dev => 'hda', 
+              address=>{
+                type       => "drive",
+               controller => 0,
+               bus        => 0,
+               unit       => 0, 
+            }};
 
             #make sure the ISO is on the remote server
             my $localISO = $base_name;
@@ -234,8 +247,18 @@ task "create",
                 file $ISO, source => $localISO;
             }
 
-            $vmCfg{storage}[1] = { file => $ISO, };
+            $vmCfg{storage}[1] = { file => $ISO, dev=> 'hdc'};
             $vmCfg{boot} = 'cdrom';
+
+#if this is a windows iso, we'll need a VirtIO driver disk from http://alt.fedoraproject.org/pub/alt/virtio-win/latest/images/bin/
+#TODO: need to bump up the device - else the cfg has 2 cdroms at hdc (and bad ide values)
+            my $virtISO = File::Spec->catfile( $templateImageDir, 'virtio-win-0.1-30.iso' );
+            $vmCfg{storage}[2] = { file => $virtISO, dev => 'hdd', address=>{
+                type       => "drive",
+               controller => 0,
+               bus        => 1,
+               unit       => 1, 
+            }};
 
         }
         else {
@@ -301,7 +324,7 @@ task "create",
     my $ping_ip = $1;
 
     unless ( defined($base_box) ) {
-        my $vnc = vm vncdisplay => $vmname;
+        my $vnc = vm vncdisplay => $params->{name};
 
         print "-- insufficient info to do more setup (try vnc: $vnc)\n";
         return;

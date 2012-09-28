@@ -30,9 +30,9 @@ task "create", sub {
 'rsync -avz -e "ssh -o StrictHostKeyChecking=no" sven@quad:/etc/ssmtp/* /etc/ssmtp/';
 
 #perl libraries needed by foswiki:
-install package => [qw(libapache-htpasswd-perl libcommon-sense-perl libcrypt-passwdmd5-perl libdevel-symdump-perl libdigest-sha1-perl liberror-perl libfile-remove-perl libhtml-parser-perl libhtml-tagset-perl libhtml-tidy-perl libhtml-tree-perl libjcode-pm-perl libjson-perl libjson-xs-perl liblocale-gettext-perl libtext-charwidth-perl libtext-iconv-perl libtext-wrapi18n-perl libunicode-map-perl libunicode-map8-perl libunicode-maputf8-perl libunicode-string-perl liburi-perl libuuid-perl libdevel-monitor-perl)];
+install package => [qw(libapache-htpasswd-perl libcommon-sense-perl libcrypt-passwdmd5-perl libdevel-symdump-perl libdigest-sha1-perl liberror-perl libfile-remove-perl libhtml-parser-perl libhtml-tagset-perl libhtml-tidy-perl libhtml-tree-perl libjcode-pm-perl libjson-perl libjson-xs-perl liblocale-gettext-perl libtext-charwidth-perl libtext-iconv-perl libtext-wrapi18n-perl libunicode-map-perl libunicode-map8-perl libunicode-maputf8-perl libunicode-string-perl liburi-perl libuuid-perl libdevel-monitor-perl libperl-critic-perl perltidy)];
 #non perl deps:
-install package => [qw(rcs apache2)];
+install package => [qw(rcs apache2 dh-make-perl)];
 
     #if we were making a simple dev box :)
     #checkout foswiki
